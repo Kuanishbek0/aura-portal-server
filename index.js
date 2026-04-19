@@ -189,20 +189,6 @@ app.post('/api/auth/reset-password', async (req, res) => {
 
 // === ИИ И ФАЙЛЫ ===
 
-app.post('/api/ai/upload', authMiddleware, upload.single('file'), async (req, res) => {
-  try {
-    const file = req.file;
-    if (!file) return res.status(400).send('Файл не выбран');
-    res.json({ 
-      url: `${BACKEND_URL}/uploads/${file.filename}`,
-      name: file.originalname 
-    });
-  } catch (error) {
-    console.error("Upload Error:", error);
-    res.status(500).send('Ошибка при загрузке');
-  }
-});
-
 app.post('/api/ai/chat', authMiddleware, async (req, res) => {
   try {
     const { message } = req.body;
@@ -218,17 +204,17 @@ app.post('/api/ai/chat', authMiddleware, async (req, res) => {
       where: { id: userId }
     });
 
-    // 2. Формируем контекст для ИИ
+    // 2. Формируем контекст для ИИ (ИСПРАВЛЕНО: s.subject -> s.title)
     const scheduleContext = schedule.length > 0 
-      ? schedule.map(s => `- ${s.subject} в ${s.time} (кабинет ${s.room || 'не указан'})`).join('\n')
+      ? schedule.map(s => `- ${s.title} в ${s.time} (кабинет ${s.room || 'не указан'})`).join('\n')
       : "Расписание на данный момент не заполнено.";
 
-    const systemPrompt = ` Ты AURA — умный помощник академического портала. 
+    const systemPrompt = `Ты AURA — умный помощник академического портала. 
       Информация о студенте: Имя ${user.name}, Группа ${user.group || 'не указана'}.
       Твое актуальное расписание:
       ${scheduleContext}
       
-      Отвечай кратко и дружелюбно. Если студент спрашивает про уроки, используй данные выше.`;
+      Отвечай кратко и дружелюбно на русском языке. Если студент спрашивает про уроки, используй данные из расписания выше.`;
 
     // 3. Сохраняем сообщение пользователя
     await prisma.chatMessage.create({ data: { role: 'user', content: message, userId } });
