@@ -15,7 +15,7 @@ const nodemailer = require('nodemailer')
 const prisma = new PrismaClient()
 const app = express()
 
-// Динамические URL для работы в продакшене
+// Динамические URL для работы в продакшене (Render / Vercel)
 const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:5173";
 const BACKEND_URL = process.env.BACKEND_URL || `http://localhost:${process.env.PORT || 3000}`;
 
@@ -211,9 +211,9 @@ app.post('/api/ai/chat', authMiddleware, async (req, res) => {
     // Сохраняем сообщение пользователя
     await prisma.chatMessage.create({ data: { role: 'user', content: message, userId } });
 
-    // Запрос к ИИ (используем стабильную модель)
+    // Запрос к ИИ (используем актуальную модель llama-3.3)
     const completion = await openai.chat.completions.create({
-      model: 'llama3-8b-8192',
+      model: 'llama-3.3-70b-versatile',
       messages: [
         { role: 'system', content: 'Ты AURA — помощник академического портала. Отвечай кратко и по делу на русском языке.' }, 
         { role: 'user', content: message }
@@ -228,7 +228,7 @@ app.post('/api/ai/chat', authMiddleware, async (req, res) => {
 
     res.json({ reply });
   } catch (error) {
-    console.error("AI Error Details:", error); // Появится в логах Render
+    console.error("AI Error Details:", error); 
     res.status(500).json({ message: 'Ошибка ИИ', error: error.message });
   }
 });
@@ -242,6 +242,18 @@ app.get('/api/ai/history', authMiddleware, async (req, res) => {
     res.json(history);
   } catch (error) {
     res.status(500).json({ message: 'Ошибка загрузки истории' });
+  }
+});
+
+app.delete('/api/ai/history', authMiddleware, async (req, res) => {
+  try {
+    await prisma.chatMessage.deleteMany({
+      where: { userId: req.user.userId }
+    });
+    res.json({ message: 'История очищена' });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: 'Ошибка при удалении' });
   }
 });
 
@@ -264,16 +276,4 @@ app.get('/api/dashboard/summary', authMiddleware, async (req, res) => {
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => { 
   console.log(`Server started on ${BACKEND_URL}`);
-});
-
-app.delete('/api/ai/history', authMiddleware, async (req, res) => {
-  try {
-    await prisma.chatMessage.deleteMany({
-      where: { userId: req.user.userId }
-    });
-    res.json({ message: 'История очищена' });
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ message: 'Ошибка при удалении' });
-  }
 });
