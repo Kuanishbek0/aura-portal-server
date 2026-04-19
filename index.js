@@ -192,34 +192,42 @@ app.post('/api/auth/reset-password', async (req, res) => {
 app.post('/api/ai/chat', authMiddleware, async (req, res) => {
   try {
     const { message } = req.body;
-    const userId = req.user.userId;
+    // Превращаем userId в число, чтобы Prisma корректно искала в БД
+    const userId = Number(req.user.userId);
 
-    // 1. Достаем расписание и данные пользователя из базы
+    console.log(`[AI Chat] Запрос от пользователя ID: ${userId}`);
+
+    // 1. Достаем расписание из базы
     const schedule = await prisma.schedule.findMany({
-      where: { userId },
+      where: { userId: userId },
       orderBy: { time: 'asc' }
     });
+
+    console.log(`[AI Chat] Найдено уроков в базе: ${schedule.length}`);
 
     const user = await prisma.user.findUnique({
       where: { id: userId }
     });
 
-    // 2. Формируем контекст для ИИ (ИСПРАВЛЕНО: s.subject -> s.title)
+    // 2. Формируем контекст (используем s.title как в Prisma Studio)
     const scheduleContext = schedule.length > 0 
       ? schedule.map(s => `- ${s.title} в ${s.time} (кабинет ${s.room || 'не указан'})`).join('\n')
-      : "Расписание на данный момент не заполнено.";
+      : `Расписание на данный момент не заполнено для ID: ${userId}`;
 
-    const systemPrompt = `Ты AURA — умный помощник академического портала. 
-      Информация о студенте: Имя ${user.name}, Группа ${user.group || 'не указана'}.
-      Твое актуальное расписание:
+    const systemPrompt = `Ты AURA — помощник портала. 
+      Студент: ${user.name}. Группа: ${user.group || 'не указана'}.
+      Данные расписания из твоей базы данных:
       ${scheduleContext}
       
-      Отвечай кратко и дружелюбно на русском языке. Если студент спрашивает про уроки, используй данные из расписания выше.`;
+      Отвечай кратко. Если студент спрашивает про уроки, бери данные ТОЛЬКО из текста выше. 
+      Если там написано "не заполнено", так и ответь.`;
 
-    // 3. Сохраняем сообщение пользователя
-    await prisma.chatMessage.create({ data: { role: 'user', content: message, userId } });
+    // 3. Сохраняем сообщение пользователя в БД
+    await prisma.chatMessage.create({ 
+      data: { role: 'user', content: message, userId: userId } 
+    });
 
-    // 4. Запрос к ИИ с учетом контекста
+    // 4. Запрос к ИИ
     const completion = await openai.chat.completions.create({
       model: 'llama-3.3-70b-versatile',
       messages: [
@@ -231,8 +239,10 @@ app.post('/api/ai/chat', authMiddleware, async (req, res) => {
 
     const reply = completion.choices[0].message.content;
 
-    // 5. Сохраняем ответ ИИ
-    await prisma.chatMessage.create({ data: { role: 'assistant', content: reply, userId } });
+    // 5. Сохраняем ответ ИИ в БД
+    await prisma.chatMessage.create({ 
+      data: { role: 'assistant', content: reply, userId: userId } 
+    });
 
     res.json({ reply });
   } catch (error) {
