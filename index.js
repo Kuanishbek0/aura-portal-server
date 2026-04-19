@@ -265,3 +265,15 @@ const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => { 
   console.log(`Server started on ${BACKEND_URL}`);
 });
+
+app.delete('/api/ai/history', authMiddleware, async (req, res) => {
+  try {
+    await prisma.chatMessage.deleteMany({
+      where: { userId: req.user.userId }
+    });
+    res.json({ message: 'История очищена' });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: 'Ошибка при удалении' });
+  }
+});
