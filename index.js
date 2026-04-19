@@ -208,14 +208,36 @@ app.post('/api/ai/chat', authMiddleware, async (req, res) => {
     const { message } = req.body;
     const userId = req.user.userId;
 
-    // Сохраняем сообщение пользователя
+    // 1. Достаем расписание и данные пользователя из базы
+    const schedule = await prisma.schedule.findMany({
+      where: { userId },
+      orderBy: { time: 'asc' }
+    });
+
+    const user = await prisma.user.findUnique({
+      where: { id: userId }
+    });
+
+    // 2. Формируем контекст для ИИ
+    const scheduleContext = schedule.length > 0 
+      ? schedule.map(s => `- ${s.subject} в ${s.time} (кабинет ${s.room || 'не указан'})`).join('\n')
+      : "Расписание на данный момент не заполнено.";
+
+    const systemPrompt = ` Ты AURA — умный помощник академического портала. 
+      Информация о студенте: Имя ${user.name}, Группа ${user.group || 'не указана'}.
+      Твое актуальное расписание:
+      ${scheduleContext}
+      
+      Отвечай кратко и дружелюбно. Если студент спрашивает про уроки, используй данные выше.`;
+
+    // 3. Сохраняем сообщение пользователя
     await prisma.chatMessage.create({ data: { role: 'user', content: message, userId } });
 
-    // Запрос к ИИ (используем актуальную модель llama-3.3)
+    // 4. Запрос к ИИ с учетом контекста
     const completion = await openai.chat.completions.create({
       model: 'llama-3.3-70b-versatile',
       messages: [
-        { role: 'system', content: 'Ты AURA — помощник академического портала. Отвечай кратко и по делу на русском языке.' }, 
+        { role: 'system', content: systemPrompt }, 
         { role: 'user', content: message }
       ],
       temperature: 0.7,
@@ -223,7 +245,7 @@ app.post('/api/ai/chat', authMiddleware, async (req, res) => {
 
     const reply = completion.choices[0].message.content;
 
-    // Сохраняем ответ ИИ
+    // 5. Сохраняем ответ ИИ
     await prisma.chatMessage.create({ data: { role: 'assistant', content: reply, userId } });
 
     res.json({ reply });
