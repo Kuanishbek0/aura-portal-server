@@ -7,39 +7,20 @@ generator client {
   provider = "prisma-client-js"
 }
 
-// === НОВАЯ ТАБЛИЦА: АКАДЕМИЧЕСКАЯ ГРУППА ===
-model Group {
-  id        Int        @id @default(autoincrement())
-  name      String     @unique // Название группы, например "ВТ-20-1"
-  users     User[]     // Студенты, которые состоят в группе
-  schedules Schedule[] // Расписание для всей группы
-}
-
-// === ПОЛЬЗОВАТЕЛИ (СТУДЕНТЫ) ===
 model User {
   id            Int           @id @default(autoincrement())
   name          String
   email         String        @unique
   password      String
-  
-  // Связь с таблицей Group (теперь это не просто текст, а реальная связь)
-  groupId       Int?
-  group         Group?        @relation(fields: [groupId], references: [id])
-  
+  group         String?
   chats         ChatMessage[]
   createdAt     DateTime      @default(now())
   
-  // Поля для восстановления пароля:
+  // Новые поля для восстановления пароля:
   resetToken    String?       
   resetTokenExp DateTime?     
-
-  // Связи с индивидуальными данными студента
-  grades        Grade[]
-  courses       Course[]
-  documents     Document[]
 }
 
-// === ИСТОРИЯ ЧАТА С AURA ===
 model ChatMessage {
   id        Int      @id @default(autoincrement())
   role      String
@@ -49,42 +30,32 @@ model ChatMessage {
   createdAt DateTime @default(now())
 }
 
-// === РАСПИСАНИЕ (ТЕПЕРЬ ДЛЯ ГРУППЫ) ===
 model Schedule {
-  id      Int     @id @default(autoincrement())
-  title   String
-  type    String?
-  room    String?
-  time    String
-  
-  // Расписание привязано к группе, а не к Хасену
-  groupId Int
-  group   Group   @relation(fields: [groupId], references: [id])
+  id     Int     @id @default(autoincrement())
+  title  String
+  type   String?
+  room   String?
+  time   String
+  userId Int
 }
 
-// === ОЦЕНКИ (ИНДИВИДУАЛЬНО) ===
 model Grade {
   id      Int    @id @default(autoincrement())
   subject String
   value   String
   userId  Int
-  user    User   @relation(fields: [userId], references: [id])
 }
 
-// === КУРСЫ (ИНДИВИДУАЛЬНО) ===
 model Course {
   id          Int     @id @default(autoincrement())
   title       String
   description String?
   userId      Int
-  user        User    @relation(fields: [userId], references: [id])
 }
 
-// === ДОКУМЕНТЫ (ИНДИВИДУАЛЬНО) ===
 model Document {
   id      Int    @id @default(autoincrement())
   title   String
   fileUrl String
   userId  Int
-  user    User   @relation(fields: [userId], references: [id])
 }
