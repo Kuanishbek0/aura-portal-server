@@ -100,11 +100,19 @@ app.post('/api/auth/login', async (req, res) => {
 
 app.get('/api/auth/me', authMiddleware, async (req, res) => {
   try {
+    // Теперь мы используем include, чтобы подтянуть данные о Группе
     const user = await prisma.user.findUnique({
       where: { id: req.user.userId },
-      select: { id: true, name: true, email: true, group: true }
+      include: { group: true } 
     });
-    res.json(user);
+    
+    // Формируем ответ так, чтобы фронтенду (AppHeader) было удобно читать строку
+    res.json({
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      group: user.group ? user.group.name : null
+    });
   } catch (error) {
     res.status(500).json({ message: 'Ошибка сервера' });
   }
@@ -192,42 +200,48 @@ app.post('/api/auth/reset-password', async (req, res) => {
 app.post('/api/ai/chat', authMiddleware, async (req, res) => {
   try {
     const { message } = req.body;
-    // Превращаем userId в число, чтобы Prisma корректно искала в БД
     const userId = Number(req.user.userId);
 
     console.log(`[AI Chat] Запрос от пользователя ID: ${userId}`);
 
-    // 1. Достаем расписание из базы
-    const schedule = await prisma.schedule.findMany({
-      where: { userId: userId },
-      orderBy: { time: 'asc' }
-    });
-
-    console.log(`[AI Chat] Найдено уроков в базе: ${schedule.length}`);
-
+    // 1. Сначала находим пользователя и его группу
     const user = await prisma.user.findUnique({
-      where: { id: userId }
+      where: { id: userId },
+      include: { group: true }
     });
 
-    // 2. Формируем контекст (используем s.title как в Prisma Studio)
+    // 2. Достаем расписание по ID Группы (если студент состоит в группе)
+    let schedule = [];
+    if (user && user.groupId) {
+      schedule = await prisma.schedule.findMany({
+        where: { groupId: user.groupId },
+        orderBy: { time: 'asc' }
+      });
+    }
+
+    console.log(`[AI Chat] Найдено уроков для группы: ${schedule.length}`);
+
+    // 3. Формируем контекст
+    const groupName = user.group ? user.group.name : 'не указана';
+    
     const scheduleContext = schedule.length > 0 
       ? schedule.map(s => `- ${s.title} в ${s.time} (кабинет ${s.room || 'не указан'})`).join('\n')
-      : `Расписание на данный момент не заполнено для ID: ${userId}`;
+      : `Расписание на данный момент не заполнено для группы: ${groupName}.`;
 
     const systemPrompt = `Ты AURA — помощник портала. 
-      Студент: ${user.name}. Группа: ${user.group || 'не указана'}.
+      Студент: ${user.name}. Группа: ${groupName}.
       Данные расписания из твоей базы данных:
       ${scheduleContext}
       
       Отвечай кратко. Если студент спрашивает про уроки, бери данные ТОЛЬКО из текста выше. 
       Если там написано "не заполнено", так и ответь.`;
 
-    // 3. Сохраняем сообщение пользователя в БД
+    // 4. Сохраняем сообщение пользователя в БД
     await prisma.chatMessage.create({ 
       data: { role: 'user', content: message, userId: userId } 
     });
 
-    // 4. Запрос к ИИ
+    // 5. Запрос к ИИ
     const completion = await openai.chat.completions.create({
       model: 'llama-3.3-70b-versatile',
       messages: [
@@ -239,7 +253,7 @@ app.post('/api/ai/chat', authMiddleware, async (req, res) => {
 
     const reply = completion.choices[0].message.content;
 
-    // 5. Сохраняем ответ ИИ в БД
+    // 6. Сохраняем ответ ИИ в БД
     await prisma.chatMessage.create({ 
       data: { role: 'assistant', content: reply, userId: userId } 
     });
