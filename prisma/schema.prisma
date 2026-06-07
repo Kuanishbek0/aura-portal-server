@@ -31,12 +31,13 @@ model ChatMessage {
 }
 
 model Schedule {
-  id     Int     @id @default(autoincrement())
-  title  String
-  type   String?
-  room   String?
-  time   String
-  userId Int
+  id      Int     @id @default(autoincrement())
+  title   String
+  type    String?
+  room    String?
+  time    String
+  teacher String?
+  userId  Int
 }
 
 model Grade {
