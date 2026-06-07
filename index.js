@@ -263,16 +263,133 @@ app.get('/api/ai/history', authMiddleware, async (req, res) => {
   }
 });
 
-app.delete('/api/ai/history', authMiddleware, async (req, res) => {
-  try {
-    await prisma.chatMessage.deleteMany({
-      where: { userId: req.user.userId }
-    });
-    res.json({ message: 'История очищена' });
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ message: 'Ошибка при удалении' });
-  }
+app.post('/api/ai/chat', authMiddleware, async (req, res) => {
+  try {
+    const { message } = req.body;
+    const userId = Number(req.user.userId);
+
+    console.log(`[AI Chat] Запрос от пользователя ID: ${userId}`);
+
+    // 1. Достаем пользователя
+    const user = await prisma.user.findUnique({
+      where: { id: userId }
+    });
+
+    if (!user) {
+      return res.status(404).json({ message: 'Пользователь не найден' });
+    }
+
+    // 2. Достаем расписание из базы
+    const schedule = await prisma.schedule.findMany({
+      where: { userId },
+      orderBy: { id: 'asc' }
+    });
+
+    console.log(`[AI Chat] Найдено уроков в базе: ${schedule.length}`);
+
+    const scheduleContext = schedule.length > 0
+      ? schedule
+          .map((s) => {
+            const teacher = s.teacher ? `, преподаватель: ${s.teacher}` : '';
+            return `- ${s.title} — ${s.time} (тип: ${s.type || 'не указан'}, кабинет: ${s.room || 'не указан'}${teacher})`;
+          })
+          .join('\n')
+      : `Расписание на данный момент не заполнено для ID: ${userId}`;
+
+    // 3. Достаем оценки и считаем GPA
+    const grades = await prisma.grade.findMany({
+      where: { userId }
+    });
+
+    const gradePoints = {
+      'A': 4.0,
+      'A-': 3.67,
+      'B+': 3.33,
+      'B': 3.0,
+      'B-': 2.67,
+      'C+': 2.33,
+      'C': 2.0,
+      'C-': 1.67,
+      'D+': 1.33,
+      'D': 1.0,
+      'F': 0
+    };
+
+    let gpa = 0;
+
+    if (grades.length > 0) {
+      const totalPoints = grades.reduce((sum, grade) => {
+        const value = String(grade.value || '').trim().toUpperCase();
+        return sum + (gradePoints[value] ?? 0);
+      }, 0);
+
+      gpa = Number((totalPoints / grades.length).toFixed(2));
+    }
+
+    const gradesContext = grades.length > 0
+      ? grades.map((g) => `- ${g.subject}: ${g.value}`).join('\n')
+      : 'Оценки пока не заполнены';
+
+    const gpaContext = grades.length > 0
+      ? `${gpa}`
+      : 'не заполнен';
+
+    // 4. Формируем системный промпт для ИИ
+    const systemPrompt = `Ты AURA — учебный помощник академического портала.
+
+Студент: ${user.name}.
+Группа: ${user.group || 'не указана'}.
+
+Данные расписания из базы данных:
+${scheduleContext}
+
+Данные оценок из базы данных:
+${gradesContext}
+
+GPA студента: ${gpaContext}.
+
+Правила ответа:
+- Отвечай кратко и понятно.
+- Если студент спрашивает про уроки, сабақ, расписание или кесте — отвечай только по данным расписания выше.
+- Если студент спрашивает про преподавателя, мұғалім или оқытушы — используй teacher из расписания выше.
+- Если студент спрашивает GPA, средний балл, үлгерім или оценки — отвечай по GPA и оценкам выше.
+- Если данных нет, скажи, что данные пока не заполнены.`;
+
+    // 5. Сохраняем сообщение пользователя в БД
+    await prisma.chatMessage.create({
+      data: {
+        role: 'user',
+        content: message,
+        userId
+      }
+    });
+
+    // 6. Запрос к ИИ
+    const completion = await openai.chat.completions.create({
+      model: 'llama-3.3-70b-versatile',
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: message }
+      ],
+      temperature: 0.4
+    });
+
+    const reply = completion.choices[0].message.content;
+
+    // 7. Сохраняем ответ ИИ в БД
+    await prisma.chatMessage.create({
+      data: {
+        role: 'assistant',
+        content: reply,
+        userId
+      }
+    });
+
+    res.json({ reply });
+  } catch (error) {
+    console.error("AI Error Details:", error);
+    res.status(500).json({ message: 'Ошибка ИИ', error: error.message });
+  }
 });
 
 // === ДАШБОРД (Заглушка для диплома) ===
