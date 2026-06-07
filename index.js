@@ -278,16 +278,58 @@ app.delete('/api/ai/history', authMiddleware, async (req, res) => {
 // === ДАШБОРД (Заглушка для диплома) ===
 
 app.get('/api/dashboard/summary', authMiddleware, async (req, res) => {
-  try {
-    const summary = { gpa: 3.87, attendance: 94, credits: 128, totalCredits: 180 };
-    const deadlines = [
-      { id: 1, title: 'Лабораторная №5', subject: 'Базы данных', date: '25 апр' },
-      { id: 2, title: 'Курсовой проект', subject: 'Веб-технологии', date: '30 апр' }
-    ];
-    res.json({ summary, deadlines });
-  } catch (error) {
-    res.status(500).json({ message: 'Ошибка сервера' });
-  }
+  try {
+    const userId = Number(req.user.userId);
+
+    const grades = await prisma.grade.findMany({
+      where: { userId }
+    });
+
+    const gradePoints = {
+      'A': 4.0,
+      'A-': 3.67,
+      'B+': 3.33,
+      'B': 3.0,
+      'B-': 2.67,
+      'C+': 2.33,
+      'C': 2.0,
+      'C-': 1.67,
+      'D+': 1.33,
+      'D': 1.0,
+      'F': 0
+    };
+
+    let gpa = 0;
+
+    if (grades.length > 0) {
+      const totalPoints = grades.reduce((sum, grade) => {
+        return sum + (gradePoints[grade.value] ?? 0);
+      }, 0);
+
+      gpa = totalPoints / grades.length;
+    }
+
+    const summary = {
+      gpa: Number(gpa.toFixed(2)),
+      attendance: 94,
+      credits: 128,
+      totalCredits: 180
+    };
+
+    const deadlines = [
+      { id: 1, title: 'Лабораторная №5', subject: 'Базы данных', date: '25 апр' },
+      { id: 2, title: 'Курсовой проект', subject: 'Веб-технологии', date: '30 апр' }
+    ];
+
+    res.json({
+      summary,
+      deadlines,
+      grades
+    });
+  } catch (error) {
+    console.error("Dashboard Summary Error:", error);
+    res.status(500).json({ message: 'Ошибка сервера' });
+  }
 });
 
 // === РАСПИСАНИЕ ДЛЯ ГЛАВНОЙ СТРАНИЦЫ ===
