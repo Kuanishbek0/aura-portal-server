@@ -290,6 +290,24 @@ app.get('/api/dashboard/summary', authMiddleware, async (req, res) => {
   }
 });
 
+// === РАСПИСАНИЕ ДЛЯ ГЛАВНОЙ СТРАНИЦЫ ===
+
+app.get('/api/schedule/today', authMiddleware, async (req, res) => {
+  try {
+    const userId = Number(req.user.userId);
+
+    const schedule = await prisma.schedule.findMany({
+      where: { userId },
+      orderBy: { id: 'asc' }
+    });
+
+    res.json(schedule);
+  } catch (error) {
+    console.error("Schedule Today Error:", error);
+    res.status(500).json({ message: 'Ошибка загрузки расписания' });
+  }
+});
+
 // Запуск
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => { 
