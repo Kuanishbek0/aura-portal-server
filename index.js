@@ -362,7 +362,7 @@ app.post('/api/ai/chat', authMiddleware, async (req, res) => {
 
     const gpaContext = grades.length > 0 ? String(gpa) : 'әзірге толтырылмаған'
 
-    const systemPrompt = `Сен AURA — студенттерге арналған оқу порталының интеллектуалды көмекшісісің.
+    const systemPrompt = `AURA — студенттерге арналған оқу порталының интеллектуалды көмекшісісің.
 
 Студент туралы мәлімет:
 - Аты-жөні: ${user.name}
