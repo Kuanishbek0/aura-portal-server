@@ -96,14 +96,16 @@ app.post('/api/auth/register', async (req, res) => {
       data: {
         name,
         email,
-        password: hashedPassword
+        password: hashedPassword,
+        group: 'АЖ-221/1'
       }
     })
 
     res.json({
       id: user.id,
       name: user.name,
-      email: user.email
+      email: user.email,
+      group: user.group
     })
   } catch (error) {
     console.error('Register Error:', error)
@@ -145,7 +147,8 @@ app.post('/api/auth/login', async (req, res) => {
       user: {
         id: user.id,
         name: user.name,
-        email: user.email
+        email: user.email,
+        group: user.group
       }
     })
   } catch (error) {
@@ -302,6 +305,18 @@ app.post('/api/ai/chat', authMiddleware, async (req, res) => {
       return res.status(404).json({ message: 'Пользователь не найден' })
     }
 
+    // Университетские данные
+    const universityInfo = {
+      university: 'Қ. Құлажанов атындағы Қазақ технология және бизнес университеті',
+      faculty: 'Инжиниринг және ақпараттық технологиялар факультеті',
+      department: 'Ақпараттық технологиялар кафедрасы',
+      specialty: 'Ақпараттық жүйелер',
+      group: user.group || 'АЖ-221/1',
+      curator: 'әзірге жүйеде толық көрсетілмеген',
+      facultyHead: 'әзірге жүйеде толық көрсетілмеген',
+      deanOffice: 'әзірге жүйеде толық көрсетілмеген'
+    }
+
     // Расписание
     const schedule = await prisma.schedule.findMany({
       where: { userId },
@@ -313,11 +328,11 @@ app.post('/api/ai/chat', authMiddleware, async (req, res) => {
     const scheduleContext = schedule.length > 0
       ? schedule
           .map((s) => {
-            const teacher = s.teacher ? `, преподаватель: ${s.teacher}` : ''
-            return `- ${s.title} — ${s.time} (тип: ${s.type || 'не указан'}, кабинет: ${s.room || 'не указан'}${teacher})`
+            const teacher = s.teacher ? `, оқытушы: ${s.teacher}` : ''
+            return `- ${s.title} — ${s.time} (түрі: ${s.type || 'көрсетілмеген'}, аудитория: ${s.room || 'көрсетілмеген'}${teacher})`
           })
           .join('\n')
-      : `Расписание на данный момент не заполнено для ID: ${userId}`
+      : `Сабақ кестесі әзірге толтырылмаған. User ID: ${userId}`
 
     // Оценки и GPA
     const grades = await prisma.grade.findMany({
@@ -331,29 +346,48 @@ app.post('/api/ai/chat', authMiddleware, async (req, res) => {
 
     const gradesContext = grades.length > 0
       ? grades.map((g) => `- ${g.subject}: ${g.value}`).join('\n')
-      : 'Оценки пока не заполнены'
+      : 'Бағалар әзірге толтырылмаған'
 
-    const gpaContext = grades.length > 0 ? String(gpa) : 'не заполнен'
+    const gpaContext = grades.length > 0 ? String(gpa) : 'әзірге толтырылмаған'
 
-    const systemPrompt = `Ты AURA — учебный помощник академического портала.
+    const systemPrompt = `Сен AURA — студенттерге арналған оқу порталының интеллектуалды көмекшісісің.
 
-Студент: ${user.name}.
-Группа: ${user.group || 'не указана'}.
+Студент туралы мәлімет:
+- Аты-жөні: ${user.name}
+- Email: ${user.email}
+- Тобы: ${universityInfo.group}
 
-Данные расписания из базы данных:
+Университет туралы нақты деректер:
+- Университет: ${universityInfo.university}
+- Факультет: ${universityInfo.faculty}
+- Кафедра: ${universityInfo.department}
+- Мамандық: ${universityInfo.specialty}
+- Куратор: ${universityInfo.curator}
+- Факультет басшысы: ${universityInfo.facultyHead}
+- Деканат орналасқан жері: ${universityInfo.deanOffice}
+
+Сабақ кестесі:
 ${scheduleContext}
 
-Данные оценок из базы данных:
+Бағалар:
 ${gradesContext}
 
-GPA студента: ${gpaContext}.
+GPA көрсеткіші:
+${gpaContext}
 
-Правила ответа:
-- Отвечай кратко и понятно.
-- Если студент спрашивает про уроки, сабақ, расписание или кесте — отвечай только по данным расписания выше.
-- Если студент спрашивает про преподавателя, мұғалім или оқытушы — используй teacher из расписания выше.
-- Если студент спрашивает GPA, средний балл, үлгерім или оценки — отвечай по GPA и оценкам выше.
-- Если данных нет, скажи, что данные пока не заполнены.`
+Жауап беру ережелері:
+- Қысқа, нақты және түсінікті жауап бер.
+- Студент қазақша сұраса қазақша жауап бер, орысша сұраса орысша жауап бер.
+- Егер студент "менің тобым қандай?", "группам какая?", "қай топта оқимын?" деп сұраса: ${universityInfo.group} деп жауап бер.
+- Егер студент факультет туралы сұраса: ${universityInfo.faculty} деп жауап бер.
+- Егер студент кафедра туралы сұраса: ${universityInfo.department} деп жауап бер.
+- Егер студент мамандық, специальность немесе profession туралы сұраса: ${universityInfo.specialty} деп жауап бер.
+- Егер студент университет туралы сұраса: ${universityInfo.university} деп жауап бер.
+- Егер студент куратор, факультет басшысы немесе деканат туралы сұраса, жоғарыдағы дерекке ғана сүйен. Егер "әзірге жүйеде толық көрсетілмеген" деп тұрса, солай айт.
+- Егер студент сабақ, кесте, расписание немесе урок туралы сұраса, тек жоғарыдағы сабақ кестесіне сүйен.
+- Егер студент оқытушы, преподаватель немесе мұғалім туралы сұраса, сабақ кестесіндегі оқытушы дерегіне сүйен.
+- Егер студент GPA, орташа балл, средний балл, үлгерім немесе бағалар туралы сұраса, тек жоғарыдағы GPA және бағалар дерегіне сүйен.
+- Егер сұралған ақпарат жүйеде жоқ болса, ойдан шығарма. "Бұл ақпарат әзірге жүйеде толық енгізілмеген" деп жауап бер.`
 
     await prisma.chatMessage.create({
       data: {
@@ -369,7 +403,7 @@ GPA студента: ${gpaContext}.
         { role: 'system', content: systemPrompt },
         { role: 'user', content: message }
       ],
-      temperature: 0.4
+      temperature: 0.3
     })
 
     const reply = completion.choices[0].message.content
