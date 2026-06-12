@@ -288,6 +288,10 @@ function calculateGpa(grades) {
   return Number((totalPoints / grades.length).toFixed(2))
 }
 
+function getValue(value, fallback = 'жүйеде көрсетілмеген') {
+  return value && String(value).trim() ? value : fallback
+}
+
 // === AI CHAT ===
 
 app.post('/api/ai/chat', authMiddleware, async (req, res) => {
@@ -305,17 +309,25 @@ app.post('/api/ai/chat', authMiddleware, async (req, res) => {
       return res.status(404).json({ message: 'Пользователь не найден' })
     }
 
-    // Университетские данные
-    const universityInfo = {
-      university: 'Қ. Құлажанов атындағы Қазақ технология және бизнес университеті',
-      faculty: 'Инжиниринг және ақпараттық технологиялар факультеті',
-      department: 'Ақпараттық технологиялар кафедрасы',
-      specialty: 'Ақпараттық жүйелер',
-      group: user.group || 'АЖ-221/1',
-      curator: 'әзірге жүйеде толық көрсетілмеген',
-      facultyHead: 'әзірге жүйеде толық көрсетілмеген',
-      deanOffice: 'әзірге жүйеде толық көрсетілмеген'
-    }
+    // Университетские данные из Prisma Studio
+    const universityInfo = await prisma.universityInfo.findFirst({
+      orderBy: { id: 'asc' }
+    })
+
+    const universityContext = `
+- Университет: ${getValue(universityInfo?.university, 'Қ. Құлажанов атындағы Қазақ технология және бизнес университеті')}
+- Ректор: ${getValue(universityInfo?.rector)}
+- Директор: ${getValue(universityInfo?.director)}
+- Факультет: ${getValue(universityInfo?.faculty, 'Инжиниринг және ақпараттық технологиялар факультеті')}
+- Факультет басшысы: ${getValue(universityInfo?.facultyHead)}
+- Кафедра: ${getValue(universityInfo?.department, 'Ақпараттық технологиялар кафедрасы')}
+- Кафедра меңгерушісі: ${getValue(universityInfo?.departmentHead)}
+- Мамандық: ${getValue(universityInfo?.specialty, 'Ақпараттық жүйелер')}
+- Топ: ${user.group || 'АЖ-221/1'}
+- Куратор: ${getValue(universityInfo?.curator)}
+- Деканат орналасқан жері: ${getValue(universityInfo?.deanOffice)}
+- Дипломдық жұмыс жетекшісі: ${getValue(universityInfo?.diplomaSupervisor, 'Джумагалиева А.М.')}
+`
 
     // Расписание
     const schedule = await prisma.schedule.findMany({
@@ -355,16 +367,10 @@ app.post('/api/ai/chat', authMiddleware, async (req, res) => {
 Студент туралы мәлімет:
 - Аты-жөні: ${user.name}
 - Email: ${user.email}
-- Тобы: ${universityInfo.group}
+- Тобы: ${user.group || 'АЖ-221/1'}
 
 Университет туралы нақты деректер:
-- Университет: ${universityInfo.university}
-- Факультет: ${universityInfo.faculty}
-- Кафедра: ${universityInfo.department}
-- Мамандық: ${universityInfo.specialty}
-- Куратор: ${universityInfo.curator}
-- Факультет басшысы: ${universityInfo.facultyHead}
-- Деканат орналасқан жері: ${universityInfo.deanOffice}
+${universityContext}
 
 Сабақ кестесі:
 ${scheduleContext}
@@ -378,15 +384,15 @@ ${gpaContext}
 Жауап беру ережелері:
 - Қысқа, нақты және түсінікті жауап бер.
 - Студент қазақша сұраса қазақша жауап бер, орысша сұраса орысша жауап бер.
-- Егер студент "менің тобым қандай?", "группам какая?", "қай топта оқимын?" деп сұраса: ${universityInfo.group} деп жауап бер.
-- Егер студент факультет туралы сұраса: ${universityInfo.faculty} деп жауап бер.
-- Егер студент кафедра туралы сұраса: ${universityInfo.department} деп жауап бер.
-- Егер студент мамандық, специальность немесе profession туралы сұраса: ${universityInfo.specialty} деп жауап бер.
-- Егер студент университет туралы сұраса: ${universityInfo.university} деп жауап бер.
-- Егер студент куратор, факультет басшысы немесе деканат туралы сұраса, жоғарыдағы дерекке ғана сүйен. Егер "әзірге жүйеде толық көрсетілмеген" деп тұрса, солай айт.
-- Егер студент сабақ, кесте, расписание немесе урок туралы сұраса, тек жоғарыдағы сабақ кестесіне сүйен.
+- Егер студент "менің тобым қандай?", "группам какая?", "қай топта оқимын?" деп сұраса, тек топ дерегіне сүйен.
+- Егер студент факультет туралы сұраса, тек факультет дерегіне сүйен.
+- Егер студент кафедра туралы сұраса, тек кафедра дерегіне сүйен.
+- Егер студент мамандық, специальность немесе profession туралы сұраса, тек мамандық дерегіне сүйен.
+- Егер студент университет туралы сұраса, тек университет дерегіне сүйен.
+- Егер студент ректор, директор, факультет басшысы, кафедра меңгерушісі, куратор, деканат немесе диплом жетекшісі туралы сұраса, тек "Университет туралы нақты деректер" бөліміндегі ақпаратқа сүйен.
+- Егер студент сабақ, кесте, расписание немесе урок туралы сұраса, тек сабақ кестесіне сүйен.
 - Егер студент оқытушы, преподаватель немесе мұғалім туралы сұраса, сабақ кестесіндегі оқытушы дерегіне сүйен.
-- Егер студент GPA, орташа балл, средний балл, үлгерім немесе бағалар туралы сұраса, тек жоғарыдағы GPA және бағалар дерегіне сүйен.
+- Егер студент GPA, орташа балл, средний балл, үлгерім немесе бағалар туралы сұраса, тек GPA және бағалар дерегіне сүйен.
 - Егер сұралған ақпарат жүйеде жоқ болса, ойдан шығарма. "Бұл ақпарат әзірге жүйеде толық енгізілмеген" деп жауап бер.`
 
     await prisma.chatMessage.create({
