@@ -60,3 +60,18 @@ model Document {
   fileUrl String
   userId  Int
 }
+
+model UniversityInfo {
+  id                Int     @id @default(autoincrement())
+  university        String
+  rector            String?
+  director          String?
+  faculty           String
+  facultyHead       String?
+  department        String
+  departmentHead    String?
+  specialty         String
+  curator           String?
+  deanOffice        String?
+  diplomaSupervisor String?
+}
